@@ -22,12 +22,20 @@ banco-cadastro/
         │   └── UsuarioRepository.java         # armazenamento em memória
         ├── service/
         │   ├── UsuarioService.java            # regras de negócio e validações
-        │   └── ValidacaoException.java        # erro de validação com a lista de problemas
+        │   ├── ValidacaoException.java        # erro de validação: qual campo + mensagem
+        │   └── Campo.java                     # enum que identifica cada campo do formulário
         ├── util/
         │   ├── Validador.java                 # validação de CPF, e-mail, senha, telefone, nome
         │   └── Formatador.java                # formata CPF, telefone e data para exibição
         └── view/
-            └── TelaCadastro.java              # interface gráfica (Swing)
+            ├── TelaCadastro.java              # interface gráfica (Swing)
+            ├── Tema.java                      # cores, fontes e liga/desliga das animações
+            └── componentes/
+                ├── Animador.java              # motor das animações (Timer + easing + tremor)
+                ├── TransicaoDeCor.java        # leva uma cor suavemente até outra
+                ├── BotaoAnimado.java          # botão arredondado com hover/clique animados
+                ├── CampoFormulario.java       # rótulo + campo + mensagem de erro animada
+                └── Toast.java                 # notificação que desliza no canto da tela
 ```
 
 ## Como as partes se conversam
@@ -36,7 +44,7 @@ banco-cadastro/
 TelaCadastro  --(UsuarioDTO)-->  UsuarioService  --(Usuario)-->  UsuarioRepository
    (tela)                        (regras)                         (memória)
       ^                              |
-      +----- ValidacaoException -----+   (quando algum dado está errado)
+      +----- ValidacaoException -----+   (quando algum dado está errado: diz o campo e o motivo)
 ```
 
 Cada camada tem uma única responsabilidade:
@@ -46,7 +54,8 @@ Cada camada tem uma única responsabilidade:
 - **`UsuarioDTO` (dto)** é um `record` que leva o texto digitado (tudo `String`) da tela
   até o service. Separar isso da entidade evita misturar "dado digitado" com "dado validado".
 - **`UsuarioService` (service)** é o coração do sistema. Valida todos os campos de uma vez,
-  junta os erros numa lista e, se houver algum, lança `ValidacaoException`. Se estiver tudo
+  junta os erros num mapa `Campo -> mensagem` e, se houver algum, lança `ValidacaoException`.
+  É esse mapa que permite à tela destacar exatamente os campos errados. Se estiver tudo
   certo, converte o DTO num `Usuario` (ex.: texto da data vira `LocalDate`, CPF fica só com
   números) e manda salvar. Também impede CPF e e-mail repetidos.
 - **`UsuarioRepository` (repository)** guarda os clientes num `LinkedHashMap<Integer, Usuario>`
@@ -83,7 +92,35 @@ O texto abaixo de "Dados do cliente" indica o modo atual: **Novo cadastro** ou
 | Endereço | Mínimo de 10 caracteres |
 | Senha | Mínimo 8 caracteres, pelo menos 1 letra e 1 número, sem espaços; confirmação precisa bater |
 
-Todos os erros aparecem juntos numa única mensagem, para o usuário corrigir tudo de uma vez.
+Todos os erros aparecem de uma vez, cada um embaixo do seu campo. Ao começar a digitar num
+campo com erro, o destaque some sozinho. Apertar **Enter** em qualquer campo cadastra (ou salva, no modo edição).
+
+## Efeitos e animações
+
+| Onde | O que acontece |
+|---|---|
+| Botões | A cor escurece suavemente ao passar o mouse e mais um pouco ao clicar. Com a tecla Tab aparece um anel de foco |
+| Campos | Borda fica azul ao focar. Com erro: borda vermelha, fundo rosado e a mensagem surge embaixo com fade-in |
+| Formulário | Treme para os lados quando há erro de validação, como quem diz "não" |
+| Notificações | Sucesso, erro e aviso aparecem num "toast" que sobe no canto inferior direito, fica 3 s e some (ou some ao ser clicado). Não bloqueiam a tela como o `JOptionPane` |
+| Tabela | Linha nova brilha em verde, linha editada brilha em azul, e o brilho vai apagando. Ao excluir, a linha fica vermelha e só então desaparece. A linha sob o mouse fica levemente destacada |
+| Etiqueta de modo | "Novo cadastro" (cinza) muda para "Editando: ..." (azul) com transição de cor |
+| Tabela vazia | Mostra uma mensagem orientando o que fazer |
+
+**Como as animações funcionam.** O Swing não tem um sistema de animação pronto, então o
+`Animador` usa um `javax.swing.Timer` que dispara a cada ~15 ms (cerca de 60 quadros por segundo).
+A cada disparo ele calcula o progresso `t` de 0.0 a 1.0 e a tela atualiza algo com base nele:
+uma cor (`Animador.misturar`), uma posição (o tremor) ou uma transparência (o toast, com `AlphaComposite`).
+A função `suavizar` aplica um *easing* para o movimento começar rápido e desacelerar no fim, o que parece
+mais natural. O `Timer` é usado em vez de `Thread.sleep` porque roda na Event Dispatch Thread, a única
+que pode mexer em componentes Swing.
+
+**Quer desligar?** Mude `ANIMACOES_ATIVADAS` para `false` em `Tema.java`. Tudo continua funcionando,
+só que as mudanças acontecem na hora. É um jeito bom de comparar o antes e depois, e também de
+respeitar quem prefere menos movimento na tela.
+
+A confirmação de exclusão continua sendo um diálogo (`JOptionPane`) de propósito: em ações destrutivas,
+é bom obrigar o usuário a parar e confirmar.
 
 ## Como executar
 
@@ -132,21 +169,24 @@ sozinho. O Cliente 3 nasceu em 29/02 de um ano bissexto, que é uma data válida
 
 ### Casos para ver os erros
 
-| O que testar | Valor | Mensagem esperada |
+| O que testar | Valor | Mensagem embaixo do campo |
 |---|---|---|
-| Campos vazios | Clique em Cadastrar com tudo em branco | Lista de todos os campos obrigatórios |
-| CPF inválido | 123.456.789-00 | CPF inválido |
-| CPF com dígitos iguais | 111.111.111-11 | CPF inválido |
-| CPF repetido | Cadastre o Cliente 1 duas vezes | Já existe um cliente com este CPF |
-| E-mail inválido | maria@email ou maria.email.com | E-mail inválido |
-| E-mail repetido | MARIA.SOUZA@email.com (com CPF 123.456.789-09) | Já existe um cliente com este e-mail |
-| Data impossível | 31/02/1990 | Data de nascimento inválida |
-| Data futura | 01/01/2099 | Não pode estar no futuro |
-| Menor de idade | 10/05/2012 | Precisa ter pelo menos 18 anos |
-| Nome incompleto | Maria | Informe nome e sobrenome |
-| Telefone curto | 99123-4567 | Telefone inválido (falta DDD) |
-| Senha fraca | 12345678 ou abcdefgh | Mínimo 8 caracteres com letra e número |
-| Confirmação diferente | Senha123 / Senha124 | A confirmação não confere |
+| Campos vazios | Clique em Cadastrar com tudo em branco | "Informe o ..." em cada campo |
+| CPF inválido | 123.456.789-00 | CPF inválido. |
+| CPF com dígitos iguais | 111.111.111-11 | CPF inválido. |
+| CPF repetido | Cadastre o Cliente 1 duas vezes | CPF já cadastrado. |
+| E-mail inválido | maria@email ou maria.email.com | E-mail inválido. |
+| E-mail repetido | MARIA.SOUZA@email.com (com CPF 123.456.789-09) | E-mail já cadastrado. |
+| Data impossível | 31/02/1990 | Data inválida. |
+| Data futura | 01/01/2099 | A data não pode ser futura. |
+| Menor de idade | 10/05/2012 | Idade mínima: 18 anos. |
+| Nome incompleto | Maria | Informe nome e sobrenome, usando apenas letras. |
+| Telefone curto | 99123-4567 | Informe DDD + número. |
+| Senha fraca | 12345678 ou abcdefgh | Mín. 8, com letras e números. |
+| Confirmação diferente | Senha123 / Senha124 | As senhas não conferem. |
+
+Dica: preencha tudo errado de uma vez para ver vários campos ficarem vermelhos e o formulário tremer.
+Depois vá corrigindo e repare o vermelho sumindo em cada campo.
 
 ## Observações importantes (pensando num sistema de verdade)
 
@@ -157,3 +197,10 @@ sozinho. O Cliente 3 nasceu em 29/02 de um ano bissexto, que é uma data válida
   implementação do repositório (JDBC com H2/PostgreSQL, por exemplo).
 - **CPF válido ≠ CPF existente:** a validação confere só a matemática dos dígitos verificadores.
 
+## Ideias para evoluir o projeto
+
+1. Criar testes com JUnit para `Validador` e `UsuarioService` (são classes sem tela, fáceis de testar).
+2. Transformar `UsuarioRepository` numa interface com duas implementações: memória e banco de dados.
+3. Guardar a senha com hash e, na edição, deixar o campo de senha vazio para "manter a atual".
+4. Adicionar um campo de busca por nome ou CPF acima da tabela.
+5. Reaproveitar o `UsuarioService` numa API REST com Spring Boot, trocando só a camada de tela.
