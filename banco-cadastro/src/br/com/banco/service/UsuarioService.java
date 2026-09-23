@@ -10,8 +10,9 @@ import java.time.Period;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.format.ResolverStyle;
-import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -70,7 +71,8 @@ public class UsuarioService {
      *                   No cadastro é null.
      */
     private Usuario validarEConverter(UsuarioDTO d, Integer idIgnorado) {
-        List<String> erros = new ArrayList<>();
+        // Campo -> mensagem. As mensagens são curtas porque aparecem logo abaixo de cada campo.
+        Map<Campo, String> erros = new LinkedHashMap<>();
 
         // Normaliza os textos antes de validar
         String nome = texto(d.nomeCompleto()).replaceAll("\\s+", " ");
@@ -84,68 +86,70 @@ public class UsuarioService {
 
         // ---- Nome ----
         if (nome.isEmpty()) {
-            erros.add("Nome completo é obrigatório.");
+            erros.put(Campo.NOME, "Informe o nome completo.");
         } else if (!Validador.nomeValido(nome)) {
-            erros.add("Informe nome e sobrenome, usando apenas letras.");
+            erros.put(Campo.NOME, "Informe nome e sobrenome, usando apenas letras.");
         }
 
         // ---- CPF ----
         if (cpf.isEmpty()) {
-            erros.add("CPF é obrigatório.");
+            erros.put(Campo.CPF, "Informe o CPF.");
         } else if (!Validador.cpfValido(cpf)) {
-            erros.add("CPF inválido. Confira os números digitados.");
+            erros.put(Campo.CPF, "CPF inválido.");
         } else if (pertenceAOutroCliente(repository.buscarPorCpf(cpf), idIgnorado)) {
-            erros.add("Já existe um cliente cadastrado com este CPF.");
+            erros.put(Campo.CPF, "CPF já cadastrado.");
         }
 
         // ---- Data de nascimento ----
         LocalDate nascimento = null;
         if (dataTexto.isEmpty()) {
-            erros.add("Data de nascimento é obrigatória.");
+            erros.put(Campo.NASCIMENTO, "Informe a data de nascimento.");
         } else {
             try {
                 nascimento = LocalDate.parse(dataTexto, FORMATO_DATA);
                 LocalDate hoje = LocalDate.now();
                 if (nascimento.isAfter(hoje)) {
-                    erros.add("A data de nascimento não pode estar no futuro.");
+                    erros.put(Campo.NASCIMENTO, "A data não pode ser futura.");
                 } else if (Period.between(nascimento, hoje).getYears() < IDADE_MINIMA) {
-                    erros.add("O cliente precisa ter pelo menos " + IDADE_MINIMA + " anos.");
+                    erros.put(Campo.NASCIMENTO, "Idade mínima: " + IDADE_MINIMA + " anos.");
                 }
             } catch (DateTimeParseException e) {
-                erros.add("Data de nascimento inválida. Use o formato dd/mm/aaaa (ex.: 15/03/1995).");
+                erros.put(Campo.NASCIMENTO, "Data inválida.");
             }
         }
 
         // ---- E-mail ----
         if (email.isEmpty()) {
-            erros.add("E-mail é obrigatório.");
+            erros.put(Campo.EMAIL, "Informe o e-mail.");
         } else if (!Validador.emailValido(email)) {
-            erros.add("E-mail inválido. Exemplo de formato correto: nome@dominio.com");
+            erros.put(Campo.EMAIL, "E-mail inválido.");
         } else if (pertenceAOutroCliente(repository.buscarPorEmail(email), idIgnorado)) {
-            erros.add("Já existe um cliente cadastrado com este e-mail.");
+            erros.put(Campo.EMAIL, "E-mail já cadastrado.");
         }
 
         // ---- Telefone ----
         if (telefone.isEmpty()) {
-            erros.add("Telefone é obrigatório.");
+            erros.put(Campo.TELEFONE, "Informe o telefone.");
         } else if (!Validador.telefoneValido(telefone)) {
-            erros.add("Telefone inválido. Informe DDD + número (10 ou 11 dígitos).");
+            erros.put(Campo.TELEFONE, "Informe DDD + número.");
         }
 
         // ---- Endereço ----
         if (endereco.isEmpty()) {
-            erros.add("Endereço é obrigatório.");
+            erros.put(Campo.ENDERECO, "Informe o endereço.");
         } else if (endereco.length() < 10) {
-            erros.add("Endereço muito curto. Informe rua, número e bairro.");
+            erros.put(Campo.ENDERECO, "Endereço muito curto: inclua rua, número e bairro.");
         }
 
-        // ---- Senha ----
+        // ---- Senha e confirmação ----
         if (senha.isEmpty()) {
-            erros.add("Senha é obrigatória.");
+            erros.put(Campo.SENHA, "Informe a senha.");
         } else if (!Validador.senhaValida(senha)) {
-            erros.add("A senha deve ter no mínimo 8 caracteres, com pelo menos uma letra e um número, e sem espaços.");
+            erros.put(Campo.SENHA, "Mín. 8, com letras e números.");
+        } else if (confirmacao.isEmpty()) {
+            erros.put(Campo.CONFIRMACAO_SENHA, "Repita a senha.");
         } else if (!senha.equals(confirmacao)) {
-            erros.add("A confirmação de senha não confere com a senha digitada.");
+            erros.put(Campo.CONFIRMACAO_SENHA, "As senhas não conferem.");
         }
 
         if (!erros.isEmpty()) {
