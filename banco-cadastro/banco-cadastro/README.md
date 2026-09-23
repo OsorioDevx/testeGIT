@@ -157,10 +157,3 @@ sozinho. O Cliente 3 nasceu em 29/02 de um ano bissexto, que é uma data válida
   implementação do repositório (JDBC com H2/PostgreSQL, por exemplo).
 - **CPF válido ≠ CPF existente:** a validação confere só a matemática dos dígitos verificadores.
 
-## Ideias para evoluir o projeto
-
-1. Criar testes com JUnit para `Validador` e `UsuarioService` (são classes sem tela, fáceis de testar).
-2. Transformar `UsuarioRepository` numa interface com duas implementações: memória e banco de dados.
-3. Guardar a senha com hash e, na edição, deixar o campo de senha vazio para "manter a atual".
-4. Adicionar um campo de busca por nome ou CPF acima da tabela.
-5. Reaproveitar o `UsuarioService` numa API REST com Spring Boot, trocando só a camada de tela.
